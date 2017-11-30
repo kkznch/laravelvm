@@ -135,7 +135,7 @@
         dest: /etc/php.d/15-xdebug.ini
         create: yes
         content: |
-          zend_extension=/opt/remi/php71/root/usr/lib64/php/modules/xdebug.so
+          zend_extension=/lib64/php/modules/xdebug.so
           html_errors=on
           xdebug.collect_vars=on
           xdebug.collect_params=4
