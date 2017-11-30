@@ -121,6 +121,13 @@
             socket          = /var/lib/mysql/mysql.sock
             nice            = 0
 
+    - name: start mysqld
+      systemd:
+        name: mysqld.service
+        state: restarted
+        daemon_reload: yes
+        enabled: yes
+
     - name: modify /etc/php.ini
       replace:
         dest: /etc/php.ini
