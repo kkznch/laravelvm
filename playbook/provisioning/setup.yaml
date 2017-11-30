@@ -1,0 +1,218 @@
+# Playbook
+---
+- hosts: laravelvm
+  become: yes
+  user: vagrant
+  tasks:
+    - name: add yum repository
+      yum: name="{{ item }}" state=latest
+      with_items:
+        - epel-release
+        - http://rpms.famillecollet.com/enterprise/remi-release-7.rpm
+        - http://dev.mysql.com/get/mysql57-community-release-el7-7.noarch.rpm
+
+    - name: yum update
+      yum: name=* state=latest
+
+    - name: yum remove
+      yum: name="{{ item }}" state=absent
+      with_items:
+        - mariadb-libs
+
+    - name: yum install
+      yum: name="{{ item }}" state=latest
+      with_items:
+        - curl
+        - zip
+        - unzip
+        - git
+        - nginx
+        - mysql
+        - mysql-devel
+        - mysql-server
+        - mysql-utilities
+
+    - name: yum php install
+      yum: name="{{ item }}" enablerepo=remi-php71 state=latest
+      with_items:
+        - php
+        - php-cli
+        - php-fpm
+        - php-common
+        - php-devel
+        - php-json
+        - php-mbstring
+        - php-mysqlnd
+        - php-pdo
+        - php-process
+        - php-xml
+        - php-pecl-xdebug
+
+    - name: create /etc/my.cnf
+      copy:
+          dest: /etc/my.cnf
+          mode: 0644
+          content: |
+            [client]
+            default-character-set = utf8mb4
+
+            [mysql]
+            default-character-set=utf8mb4
+
+            [mysqld]
+            skip-grant-tables
+            socket          = /var/lib/mysql/mysql.sock
+            user            = mysql
+            pid-file        = /var/run/mysqld/mysqld.pid
+            port            = 3306
+            basedir         = /usr
+            datadir         = /var/lib/mysql
+            tmpdir          = /tmp
+            lc-messages-dir = /usr/share/mysql
+            skip-external-locking
+            bind-address            = 127.0.0.1
+
+            skip-character-set-client-handshake
+            character-set-server  = utf8mb4
+            collation-server      = utf8mb4_general_ci
+            init-connect          = SET NAMES utf8mb4
+
+            transaction_isolation = READ-COMMITTED
+
+            ## network
+            max_allowed_packet = 16M
+            max_connections = 1000
+            max_connect_errors = 10000
+
+            ## cache size
+            table_open_cache = 128
+            thread_cache_size = 8
+            query_cache_type = 1
+            query_cache_size=64M
+            binlog_cache_size = 8M
+            max_heap_table_size = 32M
+            tmp_table_size =324M
+
+            ## innodb
+            innodb_buffer_pool_size = 512M
+            innodb_data_file_path = ibdata1:10M:autoextend
+            innodb_log_buffer_size = 64M
+            innodb_doublewrite = 0
+            innodb_lock_wait_timeout = 5
+            innodb_support_xa = 1
+            innodb_flush_log_at_trx_commit = 2
+            innodb_flush_method = O_DIRECT
+            innodb_file_per_table
+            innodb_file_format = Barracuda
+            innodb_io_capacity=2000
+
+            [mysqld-5.6]
+            default_storage_engine = InnoDB
+            innodb_log_file_size = 64M
+            innodb_io_capacity_max=4000
+            innodb_buffer_pool_dump_at_shutdown = 1
+            innodb_buffer_pool_load_at_startup = 1
+
+            key_buffer_size         = 16M
+            thread_stack            = 192K
+            query_cache_size        = 16M
+
+            [mysqld_safe]
+            socket          = /var/lib/mysql/mysql.sock
+            nice            = 0
+
+    - name: modify /etc/php.ini
+      replace:
+        dest: /etc/php.ini
+        regexp: "{{ item.regexp }}"
+        replace: "{{ item.replace }}"
+      with_items:
+        - { regexp: "^;date.timezone =", replace: "date.timezone = Asia/Tokyo" }
+        - { regexp: "^expose_php = On", replace: "expose_php = Off" }
+
+    - name: modify /etc/php.d/15-xdebug.ini
+      blockinfile:
+        dest: /etc/php.d/15-xdebug.ini
+        create: yes
+        content: |
+          zend_extension=/opt/remi/php71/root/usr/lib64/php/modules/xdebug.so
+          html_errors=on
+          xdebug.collect_vars=on
+          xdebug.collect_params=4
+          xdebug.dump_globals=on
+          xdebug.dump.GET=*
+          xdebug.dump.POST=*
+          xdebug.show_local_vars=on
+          xdebug.remote_enable = on
+          xdebug.remote_autostart=on
+          xdebug.remote_handler = dbgp
+          xdebug.remote_connect_back=on
+          xdebug.profiler_enable=0
+          xdebug.profiler_output_dir="/var/www/laravel/tmp/profile"
+          xdebug.max_nesting_level=1000
+          xdebug.remote_host=192.168.16.1
+          xdebug.remote_port = 9001
+          xdebug.idekey = "phpstorm"
+
+    - name: modify /etc/php-fpm.d/www.conf
+      replace:
+        dest: /etc/php-fpm.d/www.conf
+        regexp: "{{ item.regexp }}"
+        replace: "{{ item.replace }}"
+      with_items:
+        - { regexp: "^user = apache", replace: "user = nginx" }
+        - { regexp: "^group = apache", replace: "group = nginx" }
+        - { regexp: "^listen = 127.0.0.1:9000", replace: "listen = /var/run/php-fpm/php-fpm.sock" }
+        - { regexp: "^;listen.owner = nobody", replace: "listen.owner = nginx" }
+        - { regexp: "^;listen.group = nobody", replace: "listen.group = nginx" }
+
+    - name: start php-fpm
+      systemd:
+        name: php-fpm.service
+        state: restarted
+        daemon_reload: yes
+        enabled: yes
+
+    - name: create /etc/nginx/conf.d/laravel.conf
+      copy:
+          dest: /etc/nginx/conf.d/laravel.conf
+          mode: 0644
+          content: |
+            server {
+              server_tokens off;
+
+              root /var/www/laravel/public;
+
+              listen 9000;
+              server_name _;
+
+              location / {
+                index index.php index.html;
+                try_files $uri $uri/ /index.php?$query_string;
+              }
+
+              location ~ \.php$ {
+                fastcgi_pass unix:/var/run/php-fpm/php-fpm.sock;
+                fastcgi_index index.php;
+                include /etc/nginx/fastcgi_params;
+                fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+              }
+            }
+
+    - name: start nginx
+      systemd:
+        name: nginx.service
+        state: restarted
+        daemon_reload: yes
+        enabled: yes
+
+    - name: install composer
+      command: "{{ item }}"
+      with_items:
+        - php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+        - php composer-setup.php
+        - php -r "unlink('composer-setup.php');"
+        - mv composer.phar /usr/local/bin/composer
+
+    - name: create laravel project
+      command: /usr/local/bin/composer create-project --prefer-dist laravel/laravel /var/www/laravel
