@@ -220,6 +220,3 @@
         - php composer-setup.php
         - php -r "unlink('composer-setup.php');"
         - mv composer.phar /usr/local/bin/composer
-
-    - name: create laravel project
-      command: /usr/local/bin/composer create-project --prefer-dist laravel/laravel /var/www/laravel
