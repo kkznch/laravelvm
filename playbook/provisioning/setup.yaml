@@ -128,6 +128,13 @@
         daemon_reload: yes
         enabled: yes
 
+    - name: create database homestead
+      shell: |
+        mysql -u root <<EOT
+        create database homestead;
+        exit
+        EOT
+
     - name: modify /etc/php.ini
       replace:
         dest: /etc/php.ini
